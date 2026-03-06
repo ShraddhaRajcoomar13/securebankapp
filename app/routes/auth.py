@@ -113,4 +113,4 @@ async def login(credentials: LoginRequest, db: Session = Depends(get_db)):
         'email': user.email,
         'role': user.role.value,
     })
-    return {'access_token': token, 'token_type': 'bearer'} 
+    return {'access_token': token, 'token_type': 'bearer'}
