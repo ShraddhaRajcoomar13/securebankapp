@@ -18,7 +18,7 @@ router = APIRouter()
 
 def hash_password(password: str) -> str:
     """bcrypt with 12 rounds -- slows brute force attacks."""
-    return pwd_context.hash(password, rounds=12)
+    return pwd_context.hash(password[:72], rounds=12)
 
 def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
