@@ -1,0 +1,136 @@
+# .github/workflows/deploy.yml
+name: Build, Test & Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: securebankapp
+  ECS_CLUSTER: securebankapp-cluster
+  ECS_SERVICE: securebankapp-service
+
+jobs:
+  # ============================
+  # JOB 1: LINT & TEST
+  # ============================
+  test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest pytest-cov flake8 bandit
+
+      - name: Lint (flake8)
+        # Only lint app/ — skip lambda/ if it doesn't exist
+        run: |
+          flake8 app/ --max-line-length=100 --exclude=__pycache__
+          if [ -d "lambda/" ]; then flake8 lambda/ --max-line-length=100; fi
+
+      - name: Security scan (bandit)
+        run: |
+          bandit -r app/ -l
+          if [ -d "lambda/" ]; then bandit -r lambda/ -l; fi
+
+      - name: Run tests
+        # Skip if no tests directory yet — remove continue-on-error once tests exist
+        run: |
+          if [ -d "tests/" ]; then
+            pytest tests/ -v --cov=app --cov-report=xml
+          else
+            echo "No tests directory found — skipping tests"
+          fi
+
+  # ============================
+  # JOB 2: BUILD & PUSH TO ECR
+  # ============================
+  build:
+    name: Build & Push Docker Image
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main'
+
+    permissions:
+      id-token: write
+      contents: read
+
+    outputs:
+      image_tag: ${{ steps.image.outputs.tag }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC - no long-lived keys)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/securebankapp-github-actions
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, push
+        id: image
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          TAG: ${{ github.sha }}
+        run: |
+          docker build -t $REGISTRY/$ECR_REPOSITORY:$TAG .
+          docker tag $REGISTRY/$ECR_REPOSITORY:$TAG $REGISTRY/$ECR_REPOSITORY:latest
+          docker push $REGISTRY/$ECR_REPOSITORY:$TAG
+          docker push $REGISTRY/$ECR_REPOSITORY:latest
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+  # ============================
+  # JOB 3: DEPLOY TO ECS
+  # ============================
+  deploy:
+    name: Deploy to ECS
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main'
+
+    environment: production
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/securebankapp-github-actions
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Force new ECS deployment
+        run: |
+          aws ecs update-service \
+            --cluster $ECS_CLUSTER \
+            --service $ECS_SERVICE \
+            --force-new-deployment \
+            --region $AWS_REGION
+
+      - name: Wait for deployment to stabilise
+        run: |
+          aws ecs wait services-stable \
+            --cluster $ECS_CLUSTER \
+            --services $ECS_SERVICE \
+            --region $AWS_REGION
+
+      - name: Verify deployment
+        run: |
+          curl -f https://d3ho4d9vv7u6jf.cloudfront.net/health || exit 1
+          echo "Deployment verified!"
