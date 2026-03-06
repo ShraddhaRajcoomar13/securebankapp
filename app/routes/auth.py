@@ -74,6 +74,9 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
     return payload
 
 
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+
+
 def require_role(*allowed_roles: UserRole):
     """RBAC dependency factory."""
     async def role_checker(current_user: dict = Depends(get_current_user)):
