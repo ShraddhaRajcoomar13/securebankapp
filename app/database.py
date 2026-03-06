@@ -23,7 +23,7 @@ def _get_engine():
 
 
 def get_db():
-    engine = _get_engine()
+    _get_engine()
     db = _SessionLocal()
     try:
         yield db
