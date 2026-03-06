@@ -41,6 +41,7 @@ def init_db():
 # Expose engine for main.py import compatibility
 class _LazyEngine:
     """Proxy that defers engine creation until first attribute access."""
+
     def __getattr__(self, name):
         return getattr(_get_engine(), name)
 
