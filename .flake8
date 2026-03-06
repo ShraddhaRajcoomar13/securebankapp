@@ -1,16 +1,4 @@
 [flake8]
 max-line-length = 120
 exclude = __pycache__, .git, .venv, migrations
-ignore =
-    E221,  # multiple spaces before operator (alignment)
-    E302,  # expected 2 blank lines
-    E401,  # multiple imports on one line
-    E501,  # line too long (handled by max-line-length)
-    W292,  # no newline at end of file
-    W391,  # blank line at end of file
-    E251,  # unexpected spaces around keyword equals
-    E252,  # missing whitespace around parameter equals
-    E128,  # continuation line under-indented
-    E124,  # closing bracket indentation
-    F401,  # imported but unused (remove real ones manually)
-    F811,  # redefinition of unused import
+ignore = E221,E302,E401,E501,W292,W391,E251,E252,E128,E124,F401,F811
