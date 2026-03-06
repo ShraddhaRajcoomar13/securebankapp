@@ -27,9 +27,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 
 def hash_password(password: str) -> str:
-    """
-    Hash password with bcrypt (12 rounds) – truncate to 72 bytes to avoid bcrypt limit.
-    """
+    """Hash password with bcrypt (12 rounds) – truncate to 72 bytes to avoid bcrypt limit."""
     return get_pwd_context().hash(password[:72])
 
 
