@@ -1,0 +1,19 @@
+# ROLLBACK: Deploy previous known-good image
+
+# 1. Find previous working image tag in ECR
+aws ecr describe-images \
+  --repository-name securebankapp \
+  --query 'sort_by(imageDetails, &imagePushedAt)[-2].imageTags[0]'
+
+# 2. Update ASG launch template to use previous tag
+# (Update user_data to pull specific tag instead of 'latest')
+
+# 3. Start instance refresh with previous tag
+aws autoscaling start-instance-refresh \
+  --auto-scaling-group-name securebankapp-asg \
+  --strategy Rolling
+
+# 4. Monitor rollback
+watch -n 10 'aws autoscaling describe-instance-refreshes \
+  --auto-scaling-group-name securebankapp-asg \
+  --query RefreshStatuses[0]'

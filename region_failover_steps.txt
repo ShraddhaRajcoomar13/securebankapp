@@ -1,0 +1,33 @@
+# DR RUNBOOK: Full Region Failure (us-east-1)
+# ============================================
+
+# Step 1: Verify disaster (don't failover on a false alarm)
+aws ec2 describe-availability-zones --region us-east-1
+aws rds describe-db-instances --region us-east-1
+
+# Step 2: Restore RDS from cross-region snapshot in us-west-2
+# Get latest snapshot ARN from us-west-2
+aws rds describe-db-snapshots \
+  --region us-west-2 \
+  --query 'reverse(sort_by(DBSnapshots, &SnapshotCreateTime))[0].DBSnapshotArn'
+
+# Restore DB from snapshot
+aws rds restore-db-instance-from-db-snapshot \
+  --db-instance-identifier securebankapp-dr \
+  --db-snapshot-identifier SNAPSHOT_ARN \
+  --db-instance-class db.t3.medium \
+  --region us-west-2
+
+# Step 3: Apply Terraform in us-west-2 (pre-provision all infra there)
+cd terraform
+terraform workspace new dr
+terraform apply -var='aws_region=us-west-2' -var='environment=dr'
+
+# Step 4: Update Route 53 to point to us-west-2 ALB
+aws route53 change-resource-record-sets \
+  --hosted-zone-id YOUR_ZONE_ID \
+  --change-batch file://dr_dns_change.json
+
+# Step 5: Verify
+curl https://securebankapp.com/health
+# Expected: {"status": "healthy"}

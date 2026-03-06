@@ -1,0 +1,1229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SecureBank</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #0a0a0f;
+    --paper: #f5f2eb;
+    --cream: #ede9df;
+    --gold: #c9a84c;
+    --gold-light: #e8d5a0;
+    --red: #c0392b;
+    --green: #1a6b4a;
+    --muted: #7a7469;
+    --border: #d4cfc4;
+    --card: #faf8f3;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Instrument Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* NOISE TEXTURE OVERLAY */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 1000;
+    opacity: 0.4;
+  }
+
+  /* SCREENS */
+  .screen { display: none; min-height: 100vh; }
+  .screen.active { display: flex; }
+
+  /* ===================== AUTH SCREEN ===================== */
+  #auth-screen {
+    flex-direction: row;
+    min-height: 100vh;
+  }
+
+  .auth-left {
+    width: 45%;
+    background: var(--ink);
+    padding: 60px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .auth-left::before {
+    content: '';
+    position: absolute;
+    top: -100px;
+    right: -100px;
+    width: 400px;
+    height: 400px;
+    background: radial-gradient(circle, rgba(201,168,76,0.15) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .auth-left::after {
+    content: '';
+    position: absolute;
+    bottom: -50px;
+    left: -50px;
+    width: 300px;
+    height: 300px;
+    background: radial-gradient(circle, rgba(201,168,76,0.08) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .brand {
+    position: relative;
+    z-index: 2;
+  }
+
+  .brand-mark {
+    width: 48px;
+    height: 48px;
+    background: var(--gold);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 20px;
+    font-family: 'DM Serif Display', serif;
+    font-size: 22px;
+    color: var(--ink);
+    letter-spacing: -1px;
+  }
+
+  .brand-name {
+    font-family: 'DM Serif Display', serif;
+    font-size: 28px;
+    color: var(--paper);
+    letter-spacing: -0.5px;
+  }
+
+  .auth-hero {
+    position: relative;
+    z-index: 2;
+  }
+
+  .auth-hero h1 {
+    font-family: 'DM Serif Display', serif;
+    font-size: clamp(36px, 4vw, 52px);
+    color: var(--paper);
+    line-height: 1.1;
+    margin-bottom: 20px;
+    letter-spacing: -1px;
+  }
+
+  .auth-hero h1 em {
+    color: var(--gold);
+    font-style: italic;
+  }
+
+  .auth-hero p {
+    color: #8a8578;
+    font-size: 15px;
+    line-height: 1.7;
+    max-width: 320px;
+  }
+
+  .auth-stats {
+    display: flex;
+    gap: 40px;
+    position: relative;
+    z-index: 2;
+  }
+
+  .stat-item {
+    border-top: 1px solid #2a2a2f;
+    padding-top: 16px;
+  }
+
+  .stat-value {
+    font-family: 'DM Mono', monospace;
+    font-size: 22px;
+    color: var(--gold);
+    font-weight: 500;
+  }
+
+  .stat-label {
+    font-size: 11px;
+    color: #5a5a60;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-top: 4px;
+  }
+
+  .auth-right {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 60px;
+    background: var(--paper);
+  }
+
+  .auth-form-container {
+    width: 100%;
+    max-width: 400px;
+  }
+
+  .auth-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 40px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .tab-btn {
+    font-family: 'Instrument Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    padding: 12px 24px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--muted);
+    position: relative;
+    transition: color 0.2s;
+  }
+
+  .tab-btn.active {
+    color: var(--ink);
+  }
+
+  .tab-btn.active::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--gold);
+  }
+
+  .form-group {
+    margin-bottom: 20px;
+  }
+
+  .form-group label {
+    display: block;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--muted);
+    margin-bottom: 8px;
+    font-weight: 500;
+  }
+
+  .form-group input {
+    width: 100%;
+    padding: 14px 16px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    font-family: 'Instrument Sans', sans-serif;
+    font-size: 15px;
+    color: var(--ink);
+    outline: none;
+    transition: border-color 0.2s;
+    appearance: none;
+  }
+
+  .form-group input:focus {
+    border-color: var(--gold);
+    background: #fff;
+  }
+
+  .btn-primary {
+    width: 100%;
+    padding: 16px;
+    background: var(--ink);
+    color: var(--paper);
+    border: none;
+    font-family: 'Instrument Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+    margin-top: 8px;
+  }
+
+  .btn-primary:hover { background: #1a1a2e; }
+  .btn-primary:active { transform: scale(0.99); }
+
+  .btn-secondary {
+    padding: 12px 24px;
+    background: transparent;
+    border: 1px solid var(--border);
+    font-family: 'Instrument Sans', sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    cursor: pointer;
+    color: var(--ink);
+    transition: all 0.2s;
+  }
+
+  .btn-secondary:hover {
+    background: var(--ink);
+    color: var(--paper);
+    border-color: var(--ink);
+  }
+
+  .error-msg {
+    background: #fdf2f2;
+    border: 1px solid #f5c6c6;
+    color: var(--red);
+    padding: 12px 16px;
+    font-size: 13px;
+    margin-bottom: 20px;
+    display: none;
+  }
+
+  .success-msg {
+    background: #f2fdf7;
+    border: 1px solid #b8e6cc;
+    color: var(--green);
+    padding: 12px 16px;
+    font-size: 13px;
+    margin-bottom: 20px;
+    display: none;
+  }
+
+  /* ===================== DASHBOARD SCREEN ===================== */
+  #dashboard-screen {
+    flex-direction: column;
+    background: var(--cream);
+  }
+
+  /* TOP NAV */
+  .topnav {
+    background: var(--ink);
+    padding: 0 40px;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .nav-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .nav-mark {
+    width: 32px;
+    height: 32px;
+    background: var(--gold);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'DM Serif Display', serif;
+    font-size: 15px;
+    color: var(--ink);
+  }
+
+  .nav-name {
+    font-family: 'DM Serif Display', serif;
+    font-size: 18px;
+    color: var(--paper);
+  }
+
+  .nav-right {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+  }
+
+  .nav-user {
+    font-size: 13px;
+    color: #8a8578;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .nav-logout {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #5a5a5f;
+    background: none;
+    border: 1px solid #2a2a2f;
+    padding: 8px 16px;
+    cursor: pointer;
+    font-family: 'Instrument Sans', sans-serif;
+    font-weight: 500;
+    transition: all 0.2s;
+  }
+
+  .nav-logout:hover { color: var(--paper); border-color: #4a4a4f; }
+
+  /* DASHBOARD BODY */
+  .dash-body {
+    padding: 40px;
+    max-width: 1200px;
+    margin: 0 auto;
+    width: 100%;
+  }
+
+  .dash-header {
+    margin-bottom: 40px;
+  }
+
+  .dash-greeting {
+    font-family: 'DM Serif Display', serif;
+    font-size: 36px;
+    color: var(--ink);
+    letter-spacing: -0.5px;
+  }
+
+  .dash-date {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 6px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  /* ACCOUNT CARD */
+  .account-card {
+    background: var(--ink);
+    padding: 36px 40px;
+    margin-bottom: 32px;
+    position: relative;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.2s;
+  }
+
+  .account-card:hover { transform: translateY(-2px); }
+
+  .account-card::before {
+    content: '';
+    position: absolute;
+    top: -80px;
+    right: -80px;
+    width: 260px;
+    height: 260px;
+    background: radial-gradient(circle, rgba(201,168,76,0.2) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .account-card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 32px;
+  }
+
+  .account-type {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: #5a5a60;
+    font-weight: 600;
+  }
+
+  .account-chip {
+    width: 36px;
+    height: 28px;
+    background: linear-gradient(135deg, var(--gold), var(--gold-light));
+    border-radius: 4px;
+    opacity: 0.9;
+  }
+
+  .account-balance-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #5a5a60;
+    margin-bottom: 8px;
+  }
+
+  .account-balance {
+    font-family: 'DM Serif Display', serif;
+    font-size: 48px;
+    color: var(--paper);
+    letter-spacing: -1px;
+    line-height: 1;
+  }
+
+  .account-balance .currency {
+    font-size: 24px;
+    color: var(--gold);
+    vertical-align: super;
+    margin-right: 4px;
+  }
+
+  .account-card-bottom {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-top: 24px;
+    padding-top: 24px;
+    border-top: 1px solid #1e1e24;
+  }
+
+  .account-number {
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    color: #4a4a50;
+    letter-spacing: 2px;
+  }
+
+  .account-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--green);
+  }
+
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    background: var(--green);
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* QUICK ACTIONS */
+  .section-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--muted);
+    font-weight: 600;
+    margin-bottom: 16px;
+  }
+
+  .quick-actions {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 32px;
+  }
+
+  .action-btn {
+    background: var(--card);
+    border: 1px solid var(--border);
+    padding: 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: left;
+    font-family: 'Instrument Sans', sans-serif;
+  }
+
+  .action-btn:hover {
+    background: var(--ink);
+    border-color: var(--ink);
+  }
+
+  .action-btn:hover .action-label { color: var(--paper); }
+  .action-btn:hover .action-icon { color: var(--gold); }
+
+  .action-icon {
+    font-size: 20px;
+    margin-bottom: 10px;
+    display: block;
+    color: var(--muted);
+    transition: color 0.2s;
+  }
+
+  .action-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    transition: color 0.2s;
+  }
+
+  /* TRANSACTION PANEL */
+  .transaction-panel {
+    background: var(--card);
+    border: 1px solid var(--border);
+    margin-bottom: 32px;
+    display: none;
+    animation: slideDown 0.25s ease;
+  }
+
+  @keyframes slideDown {
+    from { opacity: 0; transform: translateY(-10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .transaction-panel.open { display: block; }
+
+  .panel-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .panel-title {
+    font-family: 'DM Serif Display', serif;
+    font-size: 20px;
+    color: var(--ink);
+  }
+
+  .panel-close {
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    color: var(--muted);
+    line-height: 1;
+    padding: 4px;
+  }
+
+  .panel-body { padding: 24px; }
+
+  .tx-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+
+  .tx-form-grid .form-group { margin-bottom: 0; }
+
+  select {
+    width: 100%;
+    padding: 14px 16px;
+    background: var(--paper);
+    border: 1px solid var(--border);
+    font-family: 'Instrument Sans', sans-serif;
+    font-size: 15px;
+    color: var(--ink);
+    outline: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%237a7469' stroke-width='1.5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 16px center;
+    cursor: pointer;
+  }
+
+  select:focus { border-color: var(--gold); }
+
+  /* TRANSACTIONS LIST */
+  .transactions-section { margin-bottom: 32px; }
+
+  .tx-item {
+    display: flex;
+    align-items: center;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--border);
+    animation: fadeIn 0.3s ease;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateX(-8px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+
+  .tx-item:last-child { border-bottom: none; }
+
+  .tx-icon {
+    width: 40px;
+    height: 40px;
+    background: var(--cream);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    margin-right: 16px;
+    flex-shrink: 0;
+  }
+
+  .tx-details { flex: 1; }
+
+  .tx-description {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--ink);
+    margin-bottom: 3px;
+  }
+
+  .tx-meta {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .tx-amount {
+    font-family: 'DM Mono', monospace;
+    font-size: 15px;
+    font-weight: 500;
+    text-align: right;
+  }
+
+  .tx-amount.credit { color: var(--green); }
+  .tx-amount.debit { color: var(--red); }
+
+  .tx-fraud-badge {
+    font-size: 10px;
+    background: #fef3cd;
+    border: 1px solid #f0c040;
+    color: #856404;
+    padding: 2px 6px;
+    margin-left: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    vertical-align: middle;
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 48px 24px;
+    color: var(--muted);
+  }
+
+  .empty-state-icon { font-size: 36px; margin-bottom: 12px; }
+  .empty-state-text { font-size: 14px; line-height: 1.6; }
+
+  /* STATUS BAR */
+  .status-bar {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    padding: 12px 20px;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    display: none;
+    z-index: 500;
+    animation: slideUp 0.3s ease;
+  }
+
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .status-bar.success { background: var(--green); color: #fff; }
+  .status-bar.error   { background: var(--red);   color: #fff; }
+  .status-bar.info    { background: var(--ink);   color: var(--paper); }
+
+  /* LOADING SPINNER */
+  .spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+    vertical-align: middle;
+    margin-right: 6px;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* RESPONSIVE */
+  @media (max-width: 768px) {
+    #auth-screen { flex-direction: column; }
+    .auth-left { width: 100%; padding: 40px 32px; min-height: auto; }
+    .auth-hero h1 { font-size: 32px; }
+    .auth-stats { gap: 24px; }
+    .auth-right { padding: 40px 32px; }
+    .dash-body { padding: 24px 20px; }
+    .quick-actions { grid-template-columns: 1fr 1fr; }
+    .tx-form-grid { grid-template-columns: 1fr; }
+    .topnav { padding: 0 20px; }
+    .account-balance { font-size: 36px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ AUTH SCREEN ============ -->
+<div id="auth-screen" class="screen active">
+  <div class="auth-left">
+    <div class="brand">
+      <div class="brand-mark">SB</div>
+      <div class="brand-name">SecureBank</div>
+    </div>
+    <div class="auth-hero">
+      <h1>Banking built for <em>trust</em> and precision.</h1>
+      <p>Enterprise-grade security with AI fraud detection. Every transaction monitored, every account protected.</p>
+    </div>
+    <div class="auth-stats">
+      <div class="stat-item">
+        <div class="stat-value">256-bit</div>
+        <div class="stat-label">Encryption</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value">AI</div>
+        <div class="stat-label">Fraud Detection</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value">99.9%</div>
+        <div class="stat-label">Uptime SLA</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="auth-right">
+    <div class="auth-form-container">
+      <div class="auth-tabs">
+        <button class="tab-btn active" onclick="switchTab('login')">Sign In</button>
+        <button class="tab-btn" onclick="switchTab('register')">Register</button>
+      </div>
+
+      <div id="auth-error" class="error-msg"></div>
+      <div id="auth-success" class="success-msg"></div>
+
+      <!-- LOGIN FORM -->
+      <!-- FIX: id was "reg-password" (duplicate/wrong), now correctly "login-password" -->
+      <div id="login-form">
+        <div class="form-group">
+          <label>Email Address</label>
+          <input type="email" id="login-email" placeholder="you@example.com" autocomplete="email">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="login-password" placeholder="Your password" autocomplete="current-password">
+        </div>
+        <button class="btn-primary" onclick="handleLogin()">
+          Sign In →
+        </button>
+      </div>
+
+      <!-- REGISTER FORM -->
+      <div id="register-form" style="display:none">
+        <div class="form-group">
+          <label>Full Name</label>
+          <input type="text" id="reg-name" placeholder="Jane Smith">
+        </div>
+        <div class="form-group">
+          <label>Email Address</label>
+          <input type="email" id="reg-email" placeholder="you@example.com">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="reg-password" placeholder="Min 8 chars, 1 uppercase, 1 number, 1 special" autocomplete="new-password">
+        </div>
+        <button class="btn-primary" onclick="handleRegister()">
+          Create Account →
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ============ DASHBOARD SCREEN ============ -->
+<div id="dashboard-screen" class="screen">
+  <nav class="topnav">
+    <div class="nav-brand">
+      <div class="nav-mark">SB</div>
+      <div class="nav-name">SecureBank</div>
+    </div>
+    <div class="nav-right">
+      <span class="nav-user" id="nav-email">—</span>
+      <button class="nav-logout" onclick="handleLogout()">Sign Out</button>
+    </div>
+  </nav>
+
+  <div class="dash-body">
+    <div class="dash-header">
+      <div class="dash-greeting" id="dash-greeting">Good morning.</div>
+      <div class="dash-date" id="dash-date">—</div>
+    </div>
+
+    <!-- ACCOUNT CARD -->
+    <div class="account-card" id="account-card" onclick="toggleTransactionPanel('send')">
+      <div class="account-card-top">
+        <div class="account-type">Checking Account</div>
+        <div class="account-chip"></div>
+      </div>
+      <div class="account-balance-label">Available Balance</div>
+      <div class="account-balance" id="account-balance">
+        <span class="currency">$</span><span id="balance-value">—</span>
+      </div>
+      <div class="account-card-bottom">
+        <div class="account-number" id="account-number">•••• •••• ••••</div>
+        <div class="account-status">
+          <div class="status-dot"></div>
+          Active
+        </div>
+      </div>
+    </div>
+
+    <!-- QUICK ACTIONS -->
+    <div class="section-title">Quick Actions</div>
+    <div class="quick-actions">
+      <button class="action-btn" onclick="toggleTransactionPanel('send')">
+        <span class="action-icon">↑</span>
+        <span class="action-label">Send Money</span>
+      </button>
+      <button class="action-btn" onclick="toggleTransactionPanel('deposit')">
+        <span class="action-icon">↓</span>
+        <span class="action-label">Deposit</span>
+      </button>
+      <button class="action-btn" onclick="loadTransactions()">
+        <span class="action-icon">↻</span>
+        <span class="action-label">Refresh</span>
+      </button>
+    </div>
+
+    <!-- TRANSACTION PANEL -->
+    <div class="transaction-panel" id="transaction-panel">
+      <div class="panel-header">
+        <div class="panel-title" id="panel-title">New Transaction</div>
+        <button class="panel-close" onclick="closePanel()">×</button>
+      </div>
+      <div class="panel-body">
+        <div id="panel-error" class="error-msg"></div>
+        <div class="tx-form-grid">
+          <div class="form-group">
+            <label>Amount</label>
+            <input type="number" id="tx-amount" placeholder="0.00" min="0.01" step="0.01">
+          </div>
+          <div class="form-group">
+            <label>Category</label>
+            <select id="tx-category">
+              <option value="general">General</option>
+              <option value="groceries">Groceries</option>
+              <option value="utilities">Utilities</option>
+              <option value="entertainment">Entertainment</option>
+              <option value="transport">Transport</option>
+              <option value="healthcare">Healthcare</option>
+              <option value="wire_transfer">Wire Transfer</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <input type="text" id="tx-description" placeholder="What's this for?">
+        </div>
+        <button class="btn-primary" id="tx-submit-btn" onclick="handleTransaction()">
+          Confirm Transaction →
+        </button>
+      </div>
+    </div>
+
+    <!-- TRANSACTIONS -->
+    <div class="transactions-section">
+      <div class="section-title">Recent Transactions</div>
+      <div id="transactions-list">
+        <div class="empty-state">
+          <div class="empty-state-icon">◎</div>
+          <div class="empty-state-text">No transactions yet.<br>Make your first transaction above.</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- STATUS BAR -->
+<div class="status-bar" id="status-bar"></div>
+
+<script>
+// ============================================================
+// CONFIG — point this at your CloudFront URL
+// ============================================================
+const API_BASE = 'https://d3ho4d9vv7u6jf.cloudfront.net';
+
+// ============================================================
+// STATE
+// ============================================================
+let token = localStorage.getItem('sb_token') || null;
+let userEmail = localStorage.getItem('sb_email') || null;
+let accountId = localStorage.getItem('sb_account_id') || null;
+let currentTxType = 'debit';
+
+// ============================================================
+// INIT
+// ============================================================
+function init() {
+  if (token) {
+    showDashboard();
+  }
+  setDate();
+}
+
+function setDate() {
+  const now = new Date();
+  const hour = now.getHours();
+  const greeting = hour < 12 ? 'Good morning.' : hour < 17 ? 'Good afternoon.' : 'Good evening.';
+  const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  document.getElementById('dash-greeting').textContent = greeting;
+  document.getElementById('dash-date').textContent = dateStr;
+}
+
+// ============================================================
+// API HELPER
+// ============================================================
+async function api(endpoint, method = 'GET', body = null, auth = true) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (auth && token) headers['Authorization'] = `Bearer ${token}`;
+  const opts = { method, headers };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(`${API_BASE}${endpoint}`, opts);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || 'Request failed');
+  return data;
+}
+
+// ============================================================
+// AUTH
+// ============================================================
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach((b, i) => {
+    b.classList.toggle('active', (i === 0 && tab === 'login') || (i === 1 && tab === 'register'));
+  });
+  document.getElementById('login-form').style.display    = tab === 'login'    ? 'block' : 'none';
+  document.getElementById('register-form').style.display = tab === 'register' ? 'block' : 'none';
+  clearMessages();
+}
+
+async function handleLogin() {
+  const email    = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;   // FIX: was 'login-password' in JS but input had id="reg-password"
+  if (!email || !password) return showError('Please fill in all fields.');
+
+  setLoading('login');
+  try {
+    const data = await api('/api/v1/auth/login', 'POST', { email, password }, false);
+    token = data.access_token;
+    userEmail = email;
+    localStorage.setItem('sb_token', token);
+    localStorage.setItem('sb_email', email);
+    showDashboard();
+    showStatus('Welcome back!', 'success');
+  } catch (e) {
+    showError(e.message);
+  } finally {
+    clearLoading('login');
+  }
+}
+
+async function handleRegister() {
+  const name     = document.getElementById('reg-name').value.trim();
+  const email    = document.getElementById('reg-email').value.trim();
+  const password = document.getElementById('reg-password').value;  // NO .trim() on password
+  if (!name || !email || !password) return showError('Please fill in all fields.');
+  if (password.length < 8) return showError('Password must be at least 8 characters.');
+
+  setLoading('register');
+  try {
+    await api('/api/v1/auth/register', 'POST', { full_name: name, email, password }, false);
+    showSuccess('Account created! Please sign in.');
+    switchTab('login');
+  } catch (e) {
+    showError(e.message);
+  } finally {
+    clearLoading('register');
+  }
+}
+
+function handleLogout() {
+  token = null; userEmail = null; accountId = null;
+  localStorage.removeItem('sb_token');
+  localStorage.removeItem('sb_email');
+  localStorage.removeItem('sb_account_id');
+  document.getElementById('auth-screen').classList.add('active');
+  document.getElementById('dashboard-screen').classList.remove('active');
+  clearMessages();
+}
+
+// ============================================================
+// DASHBOARD
+// ============================================================
+async function showDashboard() {
+  document.getElementById('auth-screen').classList.remove('active');
+  document.getElementById('dashboard-screen').classList.add('active');
+  document.getElementById('nav-email').textContent = userEmail || '—';
+  setDate();
+  await loadAccount();
+  await loadTransactions();
+}
+
+async function loadAccount() {
+  try {
+    const data = await api('/api/v1/accounts/me');
+    accountId = data.account_id;
+    localStorage.setItem('sb_account_id', accountId);
+    document.getElementById('account-number').textContent = data.account_number;
+    document.getElementById('balance-value').textContent = parseFloat(data.balance).toFixed(2);
+  } catch (e) {
+    if (e.message.includes('401') || e.message.includes('Invalid')) {
+      handleLogout();
+    }
+  }
+}
+
+async function loadTransactions() {
+  showStatus('Refreshing...', 'info');
+  try {
+    const list = document.getElementById('transactions-list');
+    list.innerHTML = `<div class="empty-state"><div class="empty-state-icon">◎</div><div class="empty-state-text">No transactions yet.</div></div>`;
+    showStatus('Up to date', 'success');
+  } catch (e) {
+    showStatus('Could not load transactions', 'error');
+  }
+}
+
+// ============================================================
+// TRANSACTIONS
+// ============================================================
+function toggleTransactionPanel(type) {
+  const panel = document.getElementById('transaction-panel');
+  const title = document.getElementById('panel-title');
+  currentTxType = type === 'deposit' ? 'credit' : 'debit';
+  title.textContent = type === 'deposit' ? 'Deposit Funds' : 'Send Money';
+  document.getElementById('panel-error').style.display = 'none';
+  panel.classList.toggle('open');
+}
+
+function closePanel() {
+  document.getElementById('transaction-panel').classList.remove('open');
+}
+
+async function handleTransaction() {
+  const amount      = parseFloat(document.getElementById('tx-amount').value);
+  const category    = document.getElementById('tx-category').value;
+  const description = document.getElementById('tx-description').value.trim();
+
+  if (!amount || amount <= 0) return showPanelError('Please enter a valid amount.');
+  if (!description) return showPanelError('Please add a description.');
+  if (!accountId) return showPanelError('No account found. Please refresh.');
+
+  const btn = document.getElementById('tx-submit-btn');
+  btn.innerHTML = '<span class="spinner"></span>Processing…';
+  btn.disabled = true;
+
+  try {
+    const data = await api('/api/v1/transactions/', 'POST', {
+      account_id: accountId,
+      transaction_type: currentTxType,
+      amount: amount,
+      description: description,
+      merchant_category: category,
+    });
+
+    closePanel();
+    document.getElementById('tx-amount').value = '';
+    document.getElementById('tx-description').value = '';
+
+    appendTransaction({
+      id: data.transaction_id,
+      description,
+      merchant_category: category,
+      transaction_type: currentTxType,
+      amount,
+      created_at: new Date().toISOString(),
+      fraud_score: null,
+    });
+
+    showStatus(`Transaction complete — ID: ${data.transaction_id.slice(0,8)}…`, 'success');
+  } catch (e) {
+    showPanelError(e.message);
+  } finally {
+    btn.innerHTML = 'Confirm Transaction →';
+    btn.disabled = false;
+  }
+}
+
+function appendTransaction(tx) {
+  const list = document.getElementById('transactions-list');
+  const empty = list.querySelector('.empty-state');
+  if (empty) empty.remove();
+
+  const icons = {
+    groceries: '🛒', utilities: '⚡', entertainment: '🎬',
+    transport: '🚌', healthcare: '💊', wire_transfer: '🏦', general: '◈'
+  };
+  const icon = icons[tx.merchant_category] || '◈';
+  const isCredit = tx.transaction_type === 'credit';
+  const sign = isCredit ? '+' : '−';
+  const date = new Date(tx.created_at).toLocaleDateString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+  const fraudBadge = tx.fraud_score >= 0.8 ? '<span class="tx-fraud-badge">⚠ Review</span>' : '';
+
+  const el = document.createElement('div');
+  el.className = 'tx-item';
+  el.innerHTML = `
+    <div class="tx-icon">${icon}</div>
+    <div class="tx-details">
+      <div class="tx-description">${tx.description}${fraudBadge}</div>
+      <div class="tx-meta">${date} · ${tx.merchant_category}</div>
+    </div>
+    <div class="tx-amount ${isCredit ? 'credit' : 'debit'}">${sign}$${parseFloat(tx.amount).toFixed(2)}</div>
+  `;
+  list.insertBefore(el, list.firstChild);
+}
+
+// ============================================================
+// UI HELPERS
+// ============================================================
+function showError(msg)   { const el = document.getElementById('auth-error');   el.textContent = msg; el.style.display = 'block'; }
+function showSuccess(msg) { const el = document.getElementById('auth-success'); el.textContent = msg; el.style.display = 'block'; }
+function showPanelError(msg) { const el = document.getElementById('panel-error'); el.textContent = msg; el.style.display = 'block'; }
+function clearMessages()  { document.getElementById('auth-error').style.display = 'none'; document.getElementById('auth-success').style.display = 'none'; }
+
+function setLoading(form) {
+  const btn = document.querySelector(`#${form}-form .btn-primary`);
+  btn.innerHTML = '<span class="spinner"></span>Processing…';
+  btn.disabled = true;
+}
+function clearLoading(form) {
+  const btn = document.querySelector(`#${form}-form .btn-primary`);
+  btn.innerHTML = form === 'login' ? 'Sign In →' : 'Create Account →';
+  btn.disabled = false;
+}
+
+let statusTimer;
+function showStatus(msg, type = 'info') {
+  const bar = document.getElementById('status-bar');
+  bar.textContent = msg;
+  bar.className = `status-bar ${type}`;
+  bar.style.display = 'block';
+  clearTimeout(statusTimer);
+  statusTimer = setTimeout(() => { bar.style.display = 'none'; }, 3500);
+}
+
+// Enter key support
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    const loginVisible = document.getElementById('login-form').style.display !== 'none';
+    if (document.getElementById('auth-screen').classList.contains('active')) {
+      loginVisible ? handleLogin() : handleRegister();
+    }
+  }
+});
+
+init();
+</script>
+</body>
+</html>
