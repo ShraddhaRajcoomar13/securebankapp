@@ -86,7 +86,7 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     # Auto-create a checking account for every new user
     account = Account(
         user_id=user.id,
-        account_number='ACC' + str(random.randint(10000000, 99999999)), # nosec B311
+        account_number='ACC' + str(random.randint(10000000, 99999999)),
         account_type='checking',
         balance=0.00,
         currency='USD',
@@ -113,4 +113,4 @@ async def login(credentials: LoginRequest, db: Session = Depends(get_db)):
         'email': user.email,
         'role': user.role.value,
     })
-    return {'access_token': token, 'token_type': 'bearer'} # nosec B105
+    return {'access_token': token, 'token_type': 'bearer'} 
