@@ -1,5 +1,5 @@
 # .github/workflows/deploy.yml
-name: Build, Test & Deploy
+name: Build, Test & Deploy to ECS
 
 on:
   push:
@@ -12,11 +12,12 @@ env:
   ECR_REPOSITORY: securebankapp
   ECS_CLUSTER: securebankapp-cluster
   ECS_SERVICE: securebankapp-service
+  HEALTH_CHECK_URL: https://d3ho4d9vv7u6jf.cloudfront.net/health
 
 jobs:
-  # ============================
+  # ──────────────────────────────────────────────────────────────
   # JOB 1: LINT & TEST
-  # ============================
+  # ──────────────────────────────────────────────────────────────
   test:
     name: Lint & Test
     runs-on: ubuntu-latest
@@ -33,7 +34,6 @@ jobs:
         run: pip install -r requirements.txt pytest pytest-cov flake8 bandit
 
       - name: Lint (flake8)
-        # Only lint app/ — skip lambda/ if it doesn't exist
         run: |
           flake8 app/ --max-line-length=100 --exclude=__pycache__
           if [ -d "lambda/" ]; then flake8 lambda/ --max-line-length=100; fi
@@ -44,7 +44,6 @@ jobs:
           if [ -d "lambda/" ]; then bandit -r lambda/ -ll; fi
 
       - name: Run tests
-        # Skip if no tests directory yet — remove continue-on-error once tests exist
         run: |
           if [ -d "tests/" ]; then
             pytest tests/ -v --cov=app --cov-report=xml
@@ -52,9 +51,9 @@ jobs:
             echo "No tests directory found — skipping tests"
           fi
 
-  # ============================
+  # ──────────────────────────────────────────────────────────────
   # JOB 2: BUILD & PUSH TO ECR
-  # ============================
+  # ──────────────────────────────────────────────────────────────
   build:
     name: Build & Push Docker Image
     runs-on: ubuntu-latest
@@ -71,17 +70,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials (OIDC - no long-lived keys)
+      - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/securebankapp-github-actions
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Login to ECR
+      - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build, tag, push
+      - name: Build, tag & push image
         id: image
         env:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -93,9 +92,9 @@ jobs:
           docker push $REGISTRY/$ECR_REPOSITORY:latest
           echo "tag=$TAG" >> $GITHUB_OUTPUT
 
-  # ============================
+  # ──────────────────────────────────────────────────────────────
   # JOB 3: DEPLOY TO ECS
-  # ============================
+  # ──────────────────────────────────────────────────────────────
   deploy:
     name: Deploy to ECS
     runs-on: ubuntu-latest
@@ -118,36 +117,57 @@ jobs:
       - name: Force new ECS deployment
         run: |
           aws ecs update-service \
-            --cluster $ECS_CLUSTER \
-            --service $ECS_SERVICE \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service ${{ env.ECS_SERVICE }} \
             --force-new-deployment \
-            --region $AWS_REGION
+            --region ${{ env.AWS_REGION }}
 
-      - name: Wait for deployment to stabilise
+      - name: Wait for ECS service to stabilize (max 10 min)
         run: |
-          echo "Waiting for ECS service to stabilise..."
-          for i in $(seq 1 30); do
+          echo "Waiting for ECS service to stabilize..."
+          TIMEOUT=600  # 10 minutes in seconds
+          INTERVAL=20
+          ELAPSED=0
+
+          while [ $ELAPSED -lt $TIMEOUT ]; do
             RUNNING=$(aws ecs describe-services \
-              --cluster $ECS_CLUSTER \
-              --services $ECS_SERVICE \
-              --region $AWS_REGION \
+              --cluster ${{ env.ECS_CLUSTER }} \
+              --services ${{ env.ECS_SERVICE }} \
+              --region ${{ env.AWS_REGION }} \
               --query 'services[0].runningCount' --output text)
+
             DESIRED=$(aws ecs describe-services \
-              --cluster $ECS_CLUSTER \
-              --services $ECS_SERVICE \
-              --region $AWS_REGION \
+              --cluster ${{ env.ECS_CLUSTER }} \
+              --services ${{ env.ECS_SERVICE }} \
+              --region ${{ env.AWS_REGION }} \
               --query 'services[0].desiredCount' --output text)
-            echo "Running: $RUNNING / Desired: $DESIRED"
-            if [ "$RUNNING" = "$DESIRED" ]; then
+
+            echo "Running: $RUNNING / Desired: $DESIRED (elapsed: $ELAPSED s)"
+
+            if [ "$RUNNING" = "$DESIRED" ] && [ "$RUNNING" != "0" ]; then
               echo "Service is stable!"
               exit 0
             fi
-            sleep 20
-          done
-          echo "Warning: service did not stabilise in time but continuing..."
-          exit 0
 
-      - name: Verify deployment
+            sleep $INTERVAL
+            ELAPSED=$((ELAPSED + INTERVAL))
+          done
+
+          echo "ERROR: ECS service did not stabilize within 10 minutes"
+          aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE }} --region ${{ env.AWS_REGION }}
+          exit 1
+
+      - name: Verify deployment with health check
         run: |
-          curl -f https://d3ho4d9vv7u6jf.cloudfront.net/health || exit 1
-          echo "Deployment verified!"
+          echo "Verifying deployment..."
+          for i in $(seq 1 12); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" ${{ env.HEALTH_CHECK_URL }})
+            if [ "$STATUS" = "200" ]; then
+              echo "Health check passed!"
+              exit 0
+            fi
+            echo "Health check failed (status $STATUS), retrying in 10s..."
+            sleep 10
+          done
+          echo "ERROR: Health check failed after 2 minutes"
+          exit 1
