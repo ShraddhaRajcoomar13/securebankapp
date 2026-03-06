@@ -1,5 +1,5 @@
 # app/routes/auth.py
-from passlib.context import CryptContext
+from argon2 import PasswordHasher, exceptions
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -14,32 +14,32 @@ from ..database import get_db
 
 router = APIRouter()
 
-# Lazy-loaded bcrypt context (prevents early crash during module import)
-_pwd_context = None
-
-
-def get_pwd_context() -> CryptContext:
-    global _pwd_context
-    if _pwd_context is None:
-        _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-    return _pwd_context
-
-
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+# Argon2 hasher (modern, secure, no 72-byte limit)
+pwd_hasher = PasswordHasher(
+    time_cost=2,          # reasonable default
+    memory_cost=102400,   # 100 MiB
+    parallelism=8,        # good balance
+    hash_len=32,
+    salt_len=16
+)
 
 
 def hash_password(password: str) -> str:
-    """Hash a password using bcrypt with 12 rounds (truncate to 72 bytes)."""
-    return get_pwd_context().hash(password[:72])
+    """Hash password using Argon2 (no length limit)."""
+    return pwd_hasher.hash(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a plain password against its stored hash."""
-    return get_pwd_context().verify(plain_password, hashed_password)
+    """Verify a plain password against its Argon2 hash."""
+    try:
+        pwd_hasher.verify(hashed_password, plain_password)
+        return True
+    except exceptions.VerifyMismatchError:
+        return False
 
 
 def create_access_token(data: dict) -> str:
-    """Generate a JWT access token with expiration time."""
+    """Generate JWT access token with expiration."""
     settings = get_settings()
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(minutes=settings["JWT_EXPIRE_MINUTES"])
@@ -52,10 +52,7 @@ def create_access_token(data: dict) -> str:
 
 
 async def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
-    """
-    Dependency to get and validate the current authenticated user from JWT.
-    Raises 401 if token is invalid or missing.
-    """
+    """Extract and validate the current user from JWT token."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -78,10 +75,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
 
 
 def require_role(*allowed_roles: UserRole):
-    """
-    RBAC dependency factory.
-    Example: @router.get("/admin", dependencies=[Depends(require_role(UserRole.ADMIN))])
-    """
+    """RBAC dependency factory."""
     async def role_checker(current_user: dict = Depends(get_current_user)):
         if current_user.get("role") not in [role.value for role in allowed_roles]:
             raise HTTPException(
@@ -94,7 +88,7 @@ def require_role(*allowed_roles: UserRole):
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 async def register(user_data: UserCreate, db: Session = Depends(get_db)):
-    """Register a new user and automatically create a checking account."""
+    """Register a new user and auto-create a checking account."""
     if db.query(User).filter(User.email == user_data.email).first():
         raise HTTPException(status_code=400, detail="Email already registered")
 
@@ -105,9 +99,8 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
         role=UserRole.CUSTOMER,
     )
     db.add(user)
-    db.flush()  # Flush to populate user.id
+    db.flush()  # Flush to get user.id
 
-    # Auto-create a checking account for the new user
     account = Account(
         user_id=user.id,
         account_number=f"ACC{random.randint(10000000, 99999999)}",
@@ -128,7 +121,7 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
 
 @router.post("/login")
 async def login(credentials: LoginRequest, db: Session = Depends(get_db)):
-    """Authenticate a user and return a JWT access token."""
+    """Authenticate user and return JWT access token."""
     user = db.query(User).filter(User.email == credentials.email).first()
     if not user or not verify_password(credentials.password, user.password_hash):
         raise HTTPException(
