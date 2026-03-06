@@ -7,10 +7,9 @@ import structlog
 import time
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from .database import engine, Base, init_db
+from .database import init_db
 from .routes import auth, accounts, transactions
 
-# Structured logging setup
 structlog.configure(
     processors=[
         structlog.processors.TimeStamper(fmt="iso"),
@@ -20,44 +19,39 @@ structlog.configure(
 )
 logger = structlog.get_logger()
 
-# Lifespan for startup/shutdown events
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: initialize database tables once
     init_db()
     yield
-    # Shutdown: optional cleanup (e.g. close connections if needed)
 
 
-# Create FastAPI app
 app = FastAPI(
     title="SecureBankApp API",
     version="1.0.0",
-    docs_url=None,      # Disable Swagger UI in production
-    redoc_url=None,     # Disable ReDoc in production
+    docs_url=None,
+    redoc_url=None,
     lifespan=lifespan,
 )
 
-# CORS middleware – allow frontend origins
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://securebankapp-frontend.s3-website-us-east-1.amazonaws.com",
         "https://d3ho4d9vv7u6jf.cloudfront.net",
-        "*"  # ← temporary for testing – remove in production
+        "*",
     ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
 
-# Trusted Host middleware (optional – restricts Host header)
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=["*"],  # Change to your domains in production
+    allowed_hosts=["*"],
 )
 
-# Custom request logging middleware
+
 @app.middleware("http")
 async def request_logging_middleware(request: Request, call_next):
     start_time = time.time()
@@ -73,23 +67,21 @@ async def request_logging_middleware(request: Request, call_next):
         client_ip=request.client.host,
     )
 
-    # Security headers
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    response.headers["Content-Security-Policy"] = "default-src 'self'"
+    response.headers["Content-Security-Policy"] = "default-src 'self'; connect-src *"
 
     return response
 
-# Include routers
+
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(accounts.router, prefix="/api/v1/accounts", tags=["accounts"])
 app.include_router(transactions.router, prefix="/api/v1/transactions", tags=["transactions"])
 
-# Prometheus metrics endpoint
 Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
-# Health check endpoint
+
 @app.get("/health")
 async def health():
     return {"status": "healthy"}
