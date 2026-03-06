@@ -3,8 +3,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import JSONResponse
 import structlog
 import time
+import traceback
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from .database import init_db
@@ -85,3 +87,11 @@ Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 @app.get("/health")
 async def health():
     return {"status": "healthy"}
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc), "traceback": traceback.format_exc()},
+    )
