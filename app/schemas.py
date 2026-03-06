@@ -5,7 +5,7 @@ import re
 
 class UserCreate(BaseModel):
     email:     EmailStr            # Validates email format
-    password:  str = Field(min_length=8, max_length=128)
+    password:  str = Field(min_length=8, max_length=64)
     full_name: str = Field(min_length=2, max_length=255)
 
     @field_validator('password')

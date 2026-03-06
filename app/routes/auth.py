@@ -1,100 +1,88 @@
 # app/routes/auth.py
-from argon2 import PasswordHasher, exceptions
+from passlib.context import CryptContext
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
-import random
-
 from ..config import get_settings
-from ..models import User, UserRole, Account
+from ..models import User, UserRole
 from ..schemas import UserCreate, LoginRequest
 from ..database import get_db
+from ..models import User, UserRole, Account
+import random
+
+# Define oauth2_scheme FIRST – before any function that uses it
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl='/api/v1/auth/login')
 
 router = APIRouter()
 
-# Argon2 hasher (modern, secure, no 72-byte limit)
-pwd_hasher = PasswordHasher(
-    time_cost=2,          # reasonable default
-    memory_cost=102400,   # 100 MiB
-    parallelism=8,        # good balance
-    hash_len=32,
-    salt_len=16
-)
+# Lazy-loaded bcrypt context (prevents early crash during module import)
+_pwd_context = None
 
+def get_pwd_context() -> CryptContext:
+    global _pwd_context
+    if _pwd_context is None:
+        _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+    return _pwd_context
 
 def hash_password(password: str) -> str:
-    """Hash password using Argon2 (no length limit)."""
-    return pwd_hasher.hash(password)
+    """bcrypt with 12 rounds -- slows brute force attacks."""
+    return get_pwd_context().hash(password[:72], rounds=12)
 
-
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a plain password against its Argon2 hash."""
-    try:
-        pwd_hasher.verify(hashed_password, plain_password)
-        return True
-    except exceptions.VerifyMismatchError:
-        return False
-
+def verify_password(plain: str, hashed: str) -> bool:
+    return get_pwd_context().verify(plain, hashed)
 
 def create_access_token(data: dict) -> str:
-    """Generate JWT access token with expiration."""
     settings = get_settings()
-    to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(minutes=settings["JWT_EXPIRE_MINUTES"])
-    to_encode.update({"exp": expire})
+    payload = data.copy()
+    payload['exp'] = datetime.utcnow() + timedelta(
+        minutes=settings['JWT_EXPIRE_MINUTES']
+    )
     return jwt.encode(
-        to_encode,
-        settings["JWT_SECRET"],
-        algorithm=settings["JWT_ALGORITHM"]
+        payload,
+        settings['JWT_SECRET'],
+        algorithm=settings['JWT_ALGORITHM']
     )
 
-
-async def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
-    """Extract and validate the current user from JWT token."""
+async def get_current_user(token: str = Depends(oauth2_scheme)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
+        detail='Invalid credentials',
+        headers={'WWW-Authenticate': 'Bearer'},
     )
     try:
         settings = get_settings()
         payload = jwt.decode(
             token,
-            settings["JWT_SECRET"],
-            algorithms=[settings["JWT_ALGORITHM"]]
+            settings['JWT_SECRET'],
+            algorithms=[settings['JWT_ALGORITHM']]
         )
-        user_id: str = payload.get("sub")
+        user_id = payload.get('sub')
         if user_id is None:
             raise credentials_exception
-    except JWTError as e:
-        raise credentials_exception from e
-
+    except JWTError:
+        raise credentials_exception
     return payload
 
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
-
-
-def require_role(*allowed_roles: UserRole):
-    """RBAC dependency factory."""
-    async def role_checker(current_user: dict = Depends(get_current_user)):
-        if current_user.get("role") not in [role.value for role in allowed_roles]:
+def require_role(*roles: UserRole):
+    """RBAC decorator factory."""
+    async def role_checker(current_user = Depends(get_current_user)):
+        if current_user.get('role') not in [r.value for r in roles]:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Insufficient permissions"
+                detail='Insufficient permissions'
             )
         return current_user
     return role_checker
 
 
-@router.post("/register", status_code=status.HTTP_201_CREATED)
+@router.post('/register', status_code=201)
 async def register(user_data: UserCreate, db: Session = Depends(get_db)):
-    """Register a new user and auto-create a checking account."""
-    if db.query(User).filter(User.email == user_data.email).first():
-        raise HTTPException(status_code=400, detail="Email already registered")
-
+    existing = db.query(User).filter(User.email == user_data.email).first()
+    if existing:
+        raise HTTPException(status_code=400, detail='Email already registered')
     user = User(
         email=user_data.email,
         password_hash=hash_password(user_data.password),
@@ -102,47 +90,34 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
         role=UserRole.CUSTOMER,
     )
     db.add(user)
-    db.flush()  # Flush to get user.id
-
+    db.flush()  # Get user.id without committing
+    # Auto-create a checking account for every new user
     account = Account(
         user_id=user.id,
-        account_number=f"ACC{random.randint(10000000, 99999999)}",
-        account_type="checking",
+        account_number='ACC' + str(random.randint(10000000, 99999999)),
+        account_type='checking',
         balance=0.00,
-        currency="USD",
+        currency='USD',
     )
     db.add(account)
     db.commit()
     db.refresh(user)
-
-    return {
-        "user_id": str(user.id),
-        "email": user.email,
-        "message": "User registered and checking account created successfully"
-    }
+    return {'user_id': str(user.id), 'email': user.email}
 
 
-@router.post("/login")
+@router.post('/login')
 async def login(credentials: LoginRequest, db: Session = Depends(get_db)):
-    """Authenticate user and return JWT access token."""
     user = db.query(User).filter(User.email == credentials.email).first()
     if not user or not verify_password(credentials.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
+            detail='Invalid email or password'
         )
-
-    if user.is_active != "Y":
-        raise HTTPException(status_code=400, detail="Account is disabled")
-
-    access_token = create_access_token({
-        "sub": str(user.id),
-        "email": user.email,
-        "role": user.role.value,
+    if user.is_active != 'Y':
+        raise HTTPException(status_code=400, detail='Account disabled')
+    token = create_access_token({
+        'sub': str(user.id),
+        'email': user.email,
+        'role': user.role.value,
     })
-
-    return {
-        "access_token": access_token,
-        "token_type": "bearer"
-    }
+    return {'access_token': token, 'token_type': 'bearer'}
